@@ -1,0 +1,1 @@
+-- Implementação principal: notebooks/03_gold_layer.sql

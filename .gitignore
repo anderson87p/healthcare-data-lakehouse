@@ -1,0 +1,26 @@
+# Dados
+*.csv
+*.zip
+data/raw/
+data/output/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Databricks
+.databricks/
+
+# IDE
+.vscode/
+.idea/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Temporários
+*.tmp
+*.log

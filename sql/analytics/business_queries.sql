@@ -1,0 +1,1 @@
+-- Implementação principal: notebooks/04_analytical_queries.sql
