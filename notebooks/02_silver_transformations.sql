@@ -1,10 +1,40 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # 02 — Silver Layer
--- MAGIC Tipagem, normalização, deduplicação e regras de qualidade.
+-- MAGIC # 02 — Transformação da Camada Silver
+-- MAGIC
+-- MAGIC ## Objetivo
+-- MAGIC
+-- MAGIC Transformar os dados brutos da camada Bronze em um conjunto de dados
+-- MAGIC confiável, tipado e preparado para consumo analítico.
+-- MAGIC
+-- MAGIC Nesta etapa são aplicadas as principais regras de qualidade e padronização
+-- MAGIC dos dados, preservando a rastreabilidade da origem e separando registros
+-- MAGIC inválidos para a camada de Quarantine.
+-- MAGIC
+-- MAGIC ## Principais transformações
+-- MAGIC
+-- MAGIC - Conversão explícita dos tipos de dados;
+-- MAGIC - Padronização dos nomes das colunas em `snake_case`;
+-- MAGIC - Limpeza e normalização de valores textuais;
+-- MAGIC - Criação de uma chave técnica (`chave_registro`) baseada nos principais
+-- MAGIC   atributos dimensionais;
+-- MAGIC - Validação das regras de qualidade;
+-- MAGIC - Separação de registros inválidos para Quarantine;
+-- MAGIC - Deduplicação determinística quando aplicável.
+-- MAGIC
+-- MAGIC ## Entrada
+-- MAGIC
+-- MAGIC healthcare_bronze.ans_beneficiarios_raw
+-- MAGIC
+-- MAGIC ## Saídas
+-- MAGIC
+-- MAGIC healthcare_silver.ans_beneficiarios
+-- MAGIC
+-- MAGIC healthcare_quarantine.ans_beneficiarios_invalidos
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Padronização e tipagem dos dados
 CREATE OR REPLACE TEMP VIEW vw_ans_beneficiarios_typed AS
 SELECT
     to_date(concat(trim(ID_CMPT_MOVEL), '-01'), 'yyyy-MM-dd') AS competencia,
@@ -36,6 +66,7 @@ FROM healthcare_bronze.ans_beneficiarios_raw;
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Validação das regras de qualidade
 CREATE OR REPLACE TEMP VIEW vw_ans_beneficiarios_quality AS
 SELECT
     *,
@@ -56,6 +87,7 @@ FROM vw_ans_beneficiarios_typed;
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Persistência da camada Silver
 CREATE OR REPLACE TABLE healthcare_silver.ans_beneficiarios
 USING DELTA
 COMMENT 'Dados de beneficiários tipados, normalizados e deduplicados'
@@ -137,6 +169,7 @@ WHERE _dedup_rank = 1;
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Persistência da Quarantine
 CREATE OR REPLACE TABLE healthcare_quarantine.ans_beneficiarios_invalidos
 USING DELTA
 COMMENT 'Registros inválidos identificados durante o tratamento Silver'
@@ -147,6 +180,7 @@ WHERE motivo_quarentena IS NOT NULL;
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Resumo da camada Silver
 SELECT
     'silver' AS camada,
     COUNT(*) AS quantidade_registros
@@ -156,3 +190,52 @@ SELECT
     'quarantine',
     COUNT(*)
 FROM healthcare_quarantine.ans_beneficiarios_invalidos;
+
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Análise da cardinalidade da chave técnica
+SELECT
+    COUNT(*) AS quantidade_registros,
+    COUNT(DISTINCT codigo_operadora) AS operadoras,
+    COUNT(DISTINCT municipio) AS municipios,
+    COUNT(DISTINCT codigo_plano) AS planos,
+    COUNT(DISTINCT chave_registro) AS chaves_tecnicas
+FROM healthcare_silver.ans_beneficiarios;
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Resumo da Quarentena
+SELECT
+    motivo_quarentena,
+    COUNT(*) AS quantidade
+FROM healthcare_quarantine.ans_beneficiarios_invalidos
+GROUP BY motivo_quarentena
+ORDER BY quantidade DESC;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC # Resultado esperado
+-- MAGIC
+-- MAGIC Ao final da execução:
+-- MAGIC
+-- MAGIC - a tabela `healthcare_silver.ans_beneficiarios` deve conter registros
+-- MAGIC   válidos, tipados e padronizados;
+-- MAGIC
+-- MAGIC - a tabela
+-- MAGIC   `healthcare_quarantine.ans_beneficiarios_invalidos`
+-- MAGIC   deve armazenar registros rejeitados juntamente com o motivo da rejeição;
+-- MAGIC
+-- MAGIC - todas as colunas devem possuir tipos apropriados para consumo analítico;
+-- MAGIC
+-- MAGIC - uma chave técnica (`chave_registro`) deve ser gerada a partir dos
+-- MAGIC   principais atributos dimensionais para facilitar rastreabilidade e
+-- MAGIC   integração entre camadas;
+-- MAGIC
+-- MAGIC - os indicadores apresentados ao final permitem validar a qualidade do
+-- MAGIC   processamento e compreender a cardinalidade dos registros processados.
+-- MAGIC
+-- MAGIC ## Próximo notebook
+-- MAGIC
+-- MAGIC `03_gold_aggregation.sql`
