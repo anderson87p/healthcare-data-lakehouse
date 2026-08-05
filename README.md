@@ -1,14 +1,16 @@
 # Healthcare Data Lakehouse
 
-Pipeline de dados em arquitetura **Medallion** desenvolvido com **Databricks SQL**, **Delta Lake** e **Unity Catalog** para análise de informações consolidadas de beneficiários de planos de saúde.
+Pipeline de dados desenvolvido em **Databricks SQL** utilizando a arquitetura **Medallion** (Bronze, Silver e Gold), **Delta Lake** e **Unity Catalog** para processamento e análise de dados públicos da Agência Nacional de Saúde Suplementar (ANS).
+
+O projeto demonstra um pipeline completo de Engenharia de Dados, incluindo ingestão, tratamento, validação da qualidade dos dados, agregações analíticas e validações finais do processamento.
 
 ## Objetivo
 
-A solução ingere um arquivo público da Agência Nacional de Saúde Suplementar (ANS), organiza os dados nas camadas Bronze, Silver e Gold e responde às seguintes perguntas:
+A solução realiza a ingestão de um arquivo público da Agência Nacional de Saúde Suplementar (ANS), organiza os dados nas camadas Bronze, Silver e Gold e disponibiliza produtos analíticos capazes de responder às seguintes perguntas de negócio:
 
 1. Quais são as cinco operadoras com maior número de beneficiários ativos?
-2. Qual é a faixa etária com mais beneficiários e quantos são?
-3. Qual é a quantidade de beneficiários por município, em ordem decrescente?
+2. Qual é a faixa etária com maior quantidade de beneficiários?
+3. Qual é a quantidade de beneficiários por município em ordem decrescente?
 
 ## Observação sobre a fonte
 
@@ -22,15 +24,24 @@ pda-024-icb-TO-2025_08.csv
 
 ```mermaid
 flowchart LR
-    A[Arquivo CSV da ANS] --> B[Unity Catalog Volume]
-    B --> C[Bronze Delta<br/>dados brutos e metadados]
-    C --> D[Silver Delta<br/>tipagem, limpeza e qualidade]
+    A[Arquivo CSV ANS]
+        --> B[Unity Catalog Volume]
+
+    B --> C[Bronze Delta<br/>dados brutos]
+
+    C --> D[Silver Delta<br/>limpeza, tipagem e qualidade]
+
+    D --> Q[Quarantine<br/>registros inválidos]
+
     D --> E1[Gold Operadoras]
     D --> E2[Gold Faixas Etárias]
     D --> E3[Gold Municípios]
+
     E1 --> F[Consultas Analíticas]
     E2 --> F
     E3 --> F
+
+    F --> G[Validação do Pipeline]
 ```
 
 Mais detalhes em [`docs/architecture.md`](docs/architecture.md).
@@ -43,6 +54,8 @@ Mais detalhes em [`docs/architecture.md`](docs/architecture.md).
 - Unity Catalog;
 - SQL;
 - Git e GitHub.
+- GitHub
+- Mermaid
 
 ## Estrutura do projeto
 
@@ -50,36 +63,26 @@ Mais detalhes em [`docs/architecture.md`](docs/architecture.md).
 healthcare-data-lakehouse/
 ├── notebooks/
 │   ├── 00_setup_environment.sql
-│   ├── 01_bronze_layer.sql
-│   ├── 02_silver_layer.sql
-│   ├── 03_gold_layer.sql
+│   ├── 01_bronze_ingestion.sql
+│   ├── 02_silver_transformations.sql
+│   ├── 03_gold_aggregations.sql
 │   ├── 04_analytical_queries.sql
 │   └── 05_validation_queries.sql
-├── sql/
-│   ├── bronze/
-│   ├── silver/
-│   ├── gold/
-│   └── analytics/
 ├── docs/
 │   ├── architecture.md
+│   ├── decisions.md
 │   └── images/
 ├── evidence/
-│   ├── bronze/
-│   ├── silver/
-│   ├── gold/
-│   └── queries/
-├── data/
-│   └── README.md
-├── .gitignore
-├── LICENSE
-└── README.md
+├── README.md
 ```
 
 ## Camadas
 
 ### Bronze
 
-Preserva o conteúdo original do CSV e acrescenta metadados técnicos:
+A camada Bronze preserva integralmente o conteúdo original do arquivo CSV, adicionando metadados técnicos para rastreabilidade do processo de ingestão.
+
+Metadados adicionados:
 
 - `_source_file`;
 - `_ingestion_timestamp`;
@@ -87,24 +90,38 @@ Preserva o conteúdo original do CSV e acrescenta metadados técnicos:
 
 ### Silver
 
-Aplica:
+A camada Silver aplica as principais regras de qualidade e padronização dos dados.
+
+Transformações realizadas:
 
 - renomeação das colunas para `snake_case`;
-- tipagem de datas e métricas;
-- remoção de espaços;
-- padronização de campos textuais;
-- validação de valores não negativos;
-- deduplicação exata;
-- criação de chave técnica por hash;
-- separação de registros válidos e inválidos.
+- tipagem explícita das colunas;
+- limpeza e normalização dos dados;
+- validação de regras de qualidade;
+- deduplicação determinística;
+- geração da chave técnica (`chave_registro`) para rastreabilidade;
+- separação de registros inválidos para a Quarantine.
 
 ### Gold
 
-Cria três agregações:
+A camada Gold materializa produtos analíticos preparados para consumo pelas consultas do desafio.
+
+São produzidas três tabelas:
 
 - `gold_operadora_beneficiarios`;
 - `gold_faixa_etaria_beneficiarios`;
 - `gold_municipio_beneficiarios`.
+
+## Resultados
+
+Ao final da execução do pipeline são produzidos:
+
+- Bronze persistida em Delta Lake;
+- Silver validada;
+- Quarantine para registros inválidos;
+- três tabelas Gold;
+- consultas analíticas;
+- notebook de validação do pipeline.
 
 ## Como executar no Databricks
 
@@ -122,9 +139,9 @@ Cria três agregações:
 | Ordem | Notebook | Responsabilidade |
 |---:|---|---|
 | 00 | `00_setup_environment.sql` | Criação dos schemas e Volume |
-| 01 | `01_bronze_layer.sql` | Ingestão do CSV como tabela Delta Bronze |
-| 02 | `02_silver_layer.sql` | Limpeza, tipagem, deduplicação e qualidade |
-| 03 | `03_gold_layer.sql` | Criação das agregações Gold |
+| 01 | `01_bronze_ingestion.sql` | Ingestão do CSV como tabela Delta Bronze |
+| 02 | `02_silver_transformations.sql` | Limpeza, tipagem, deduplicação e qualidade |
+| 03 | `03_gold_aggregations.sql` | Criação das agregações Gold |
 | 04 | `04_analytical_queries.sql` | Respostas às três perguntas do desafio |
 | 05 | `05_validation_queries.sql` | Validações de volumetria e qualidade |
 
@@ -135,6 +152,7 @@ Cria três agregações:
 - `OPTIMIZE` opcional, condicionado ao suporte do ambiente e ao volume;
 - não foi aplicado particionamento físico ao arquivo mensal inicial, pois o volume é pequeno;
 - em cenário histórico, as tabelas seriam avaliadas para particionamento ou clustering por `competencia`.
+- utilização da Quarantine para preservar registros inválidos sem interromper o processamento;
 
 ## Limitações e evolução
 
@@ -147,7 +165,9 @@ Esta primeira versão atende ao escopo do desafio. Evoluções futuras possívei
 - CI/CD;
 - observabilidade e alertas;
 - histórico de múltiplas competências;
-- catálogo e políticas de acesso mais granulares.
+- catálogo e políticas de acesso mais granulares;
+- carga full para uma única competência;
+- monitoramento da Quarantine;
 
 ## Autor
 
